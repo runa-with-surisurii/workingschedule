@@ -10,6 +10,8 @@ WorkSchedule Pro is a full-stack workforce operations system for small and mediu
 - **Attendance:** clock in/out against a shift, record timestamps, and view attendance history.
 - **Leave management:** submit requests and let managers/admins approve or reject pending requests.
 - **Analytics:** department headcount, scheduled shifts, scheduled hours, pending leave, and completed attendance today.
+- **Advanced management reports:** estimated labor cost by employee, weekly overtime-risk detection, daily shift coverage mix, and employee workload comparisons.
+- **Capstone documentation:** project proposal, database design, API map, business rules, testing plan, and future enhancements.
 - **CSV export:** export the currently selected dataset for reporting in Excel or Power BI.
 - **Role-aware API:** admin, manager, and employee demo roles; endpoints enforce permissions for management actions.
 - **Persistence:** SQLite database created automatically at first startup, with starter employees and shifts.
@@ -30,8 +32,16 @@ workingschedule/
 ├── app.js                # Frontend state, API calls, tables, forms, exports
 ├── index.html             # Original simple schedule demo
 ├── backend/
+│   ├── __init__.py        # Backend package marker
 │   └── main.py            # REST API, authentication, business rules, database setup
 ├── requirements.txt
+├── CAPSTONE_PROPOSAL.md
+├── docs/
+│   ├── DATABASE_DESIGN.md
+│   └── TEST_PLAN.md
+├── tests/
+│   └── test_business_rules.py
+├── .gitignore
 └── README.md
 ```
 
@@ -91,6 +101,10 @@ The API seeds demo accounts and sample employees/shifts when the database is emp
 | GET / POST | `/api/leaves` | List and request leave | Signed in |
 | PATCH | `/api/leaves/{id}` | Approve or reject leave | Admin or Manager |
 | GET | `/api/analytics/summary` | KPI summary and department counts | Signed in |
+| GET | `/api/analytics/payroll` | Scheduled labor-cost estimate by employee (start, end) | Admin or Manager |
+| GET | `/api/analytics/coverage` | Shift counts and mix by date (start, end) | Signed in |
+| GET | `/api/analytics/overtime` | Weekly scheduled-hours overtime alerts (start, end, weekly_limit) | Admin or Manager |
+| GET | `/api/analytics/employee-workload` | Shift counts and hours per active employee (start, end) | Admin or Manager |
 
 ## Business rules demonstrated
 
@@ -101,9 +115,18 @@ The API seeds demo accounts and sample employees/shifts when the database is emp
 5. Only managers and admins can create shifts, add employees, cancel shifts, or review leave.
 6. Employees can only clock in/out for their own assigned shifts and request leave for themselves.
 
+## Run the tests
+
+From the repository root, with the virtual environment active:
+
+```bash
+python -m unittest discover -s tests -v
+```
+
 ## Suggested capstone extensions
 
 - Add a full weekly calendar and drag-and-drop shift assignment.
+- Add employee profile editing, recurring schedules, skill-based coverage, and location-specific staffing targets.
 - Add recurring shifts, overtime alerts, and coverage requirements by role.
 - Add password reset, expiring JWT/session tokens, audit logs, and environment-based secrets.
 - Add pagination, database migrations, unit tests, and CI workflows.
