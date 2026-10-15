@@ -152,3 +152,94 @@ def summary(user=Depends(auth)):
     total=round(sum(hours(s['start_time'],s['end_time']) for s in q("SELECT start_time,end_time FROM shifts WHERE shift_date LIKE ? AND status!='Cancelled'",(month+'%',))),1)
     departments=q('SELECT department,COUNT(*) count FROM employees WHERE status="Active" GROUP BY department ORDER BY count DESC')
     return {'active_employees':people,'monthly_shifts':shifts,'pending_leaves':pending,'completed_today':complete,'monthly_scheduled_hours':total,'departments':departments}
+
+
+@app.get('/api/analytics/payroll')
+def payroll(start:str='',end:str='',user=Depends(roles('admin','manager'))):
+    """Estimate scheduled labor cost from shift duration and each employee's hourly rate."""
+    clauses=["s.status!='Cancelled'"]; args=[]
+    if start: clauses.append('s.shift_date>=?'); args.append(start)
+    if end: clauses.append('s.shift_date<=?'); args.append(end)
+    rows=q("SELECT e.id employee_id,e.name employee_name,e.department,e.hourly_rate,s.shift_date,s.start_time,s.end_time "
+           "FROM shifts s JOIN employees e ON e.id=s.employee_id WHERE "+" AND ".join(clauses)+
+           " ORDER BY e.department,e.name,s.shift_date",args)
+    totals={}
+    for row in rows:
+        key=row['employee_id']
+        item=totals.setdefault(key,{'employee_id':key,'employee_name':row['employee_name'],'department':row['department'],
+                                    'hourly_rate':row['hourly_rate'],'scheduled_hours':0.0,'estimated_cost':0.0,'shift_count':0})
+        duration=hours(row['start_time'],row['end_time'])
+        item['scheduled_hours']+=duration
+        item['estimated_cost']+=duration*row['hourly_rate']
+        item['shift_count']+=1
+    result=list(totals.values())
+    for item in result:
+        item['scheduled_hours']=round(item['scheduled_hours'],2)
+        item['estimated_cost']=round(item['estimated_cost'],2)
+    return {'start':start or None,'end':end or None,'currency':'USD (demo rates)','employees':result,
+            'total_hours':round(sum(x['scheduled_hours'] for x in result),2),
+            'estimated_total_cost':round(sum(x['estimated_cost'] for x in result),2)}
+
+
+@app.get('/api/analytics/coverage')
+def coverage(start:str='',end:str='',user=Depends(auth)):
+    """Summarize scheduled coverage by date and shift type for operations planning."""
+    clauses=["s.status!='Cancelled'"]; args=[]
+    if start: clauses.append('s.shift_date>=?'); args.append(start)
+    if end: clauses.append('s.shift_date<=?'); args.append(end)
+    rows=q("SELECT s.shift_date,s.shift_type,COUNT(*) scheduled_count FROM shifts s WHERE "+
+           " AND ".join(clauses)+" GROUP BY s.shift_date,s.shift_type ORDER BY s.shift_date,s.shift_type",args)
+    by_date={}
+    for row in rows:
+        item=by_date.setdefault(row['shift_date'],{'date':row['shift_date'],'total_shifts':0,'types':[]})
+        item['total_shifts']+=row['scheduled_count']
+        item['types'].append({'shift_type':row['shift_type'],'count':row['scheduled_count']})
+    return {'days':list(by_date.values()),'days_with_shifts':len(by_date),
+            'total_shifts':sum(x['total_shifts'] for x in by_date.values())}
+
+
+@app.get('/api/analytics/overtime')
+def overtime(start:str='',end:str='',weekly_limit:float=40,user=Depends(roles('admin','manager'))):
+    """Estimate weekly overtime using scheduled hours; this is a planning estimate, not payroll advice."""
+    if weekly_limit<=0 or weekly_limit>80: raise HTTPException(400,'weekly_limit must be between 1 and 80')
+    clauses=["s.status!='Cancelled'"]; args=[]
+    if start: clauses.append('s.shift_date>=?'); args.append(start)
+    if end: clauses.append('s.shift_date<=?'); args.append(end)
+    rows=q("SELECT s.employee_id,e.name employee_name,s.shift_date,s.start_time,s.end_time "
+           "FROM shifts s JOIN employees e ON e.id=s.employee_id WHERE "+" AND ".join(clauses),args)
+    weeks={}
+    for row in rows:
+        day=date.fromisoformat(row['shift_date'])
+        monday=(day-timedelta(days=day.weekday())).isoformat()
+        key=(row['employee_id'],monday)
+        item=weeks.setdefault(key,{'employee_id':row['employee_id'],'employee_name':row['employee_name'],
+                                   'week_start':monday,'scheduled_hours':0.0})
+        item['scheduled_hours']+=hours(row['start_time'],row['end_time'])
+    result=[]
+    for item in weeks.values():
+        item['scheduled_hours']=round(item['scheduled_hours'],2)
+        item['overtime_hours']=round(max(0,item['scheduled_hours']-weekly_limit),2)
+        if item['overtime_hours']>0: result.append(item)
+    result.sort(key=lambda x:(x['week_start'],x['employee_name']))
+    return {'weekly_limit':weekly_limit,'employees_over_limit':len({x['employee_id'] for x in result}),
+            'weeks_over_limit':len(result),'items':result}
+
+
+@app.get('/api/analytics/employee-workload')
+def employee_workload(start:str='',end:str='',user=Depends(roles('admin','manager'))):
+    """Compare scheduled hours and shift counts across active employees."""
+    clauses=["s.status!='Cancelled'"]; args=[]
+    if start: clauses.append('s.shift_date>=?'); args.append(start)
+    if end: clauses.append('s.shift_date<=?'); args.append(end)
+    rows=q("SELECT e.id employee_id,e.name employee_name,e.department,COUNT(s.id) shift_count "
+           "FROM employees e LEFT JOIN shifts s ON s.employee_id=e.id AND "+" AND ".join(
+           c.replace('s.','s.') for c in clauses)+" WHERE e.status='Active' "
+           "GROUP BY e.id,e.name,e.department ORDER BY e.department,e.name",args)
+    # Calculate hours in one grouped query to keep this endpoint easy to inspect in a capstone viva.
+    hours_rows=q("SELECT s.employee_id,SUM((CAST(substr(s.end_time,1,2) AS INTEGER)*60+CAST(substr(s.end_time,4,2) AS INTEGER)-"
+                 "CAST(substr(s.start_time,1,2) AS INTEGER)*60-CAST(substr(s.start_time,4,2) AS INTEGER))/60.0) hours "
+                 "FROM shifts s WHERE "+" AND ".join(clauses)+" GROUP BY s.employee_id",args)
+    hours_map={r['employee_id']:round(r['hours'] or 0,2) for r in hours_rows}
+    for row in rows: row['scheduled_hours']=hours_map.get(row['employee_id'],0)
+    return {'employees':rows,'total_active_employees':len(rows),
+            'total_scheduled_hours':round(sum(r['scheduled_hours'] for r in rows),2)}
