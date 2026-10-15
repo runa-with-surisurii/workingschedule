@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>WorkSchedule — Team Planner</title>
+<style>
+:root{--ink:#20283a;--muted:#748096;--line:#e6eaf1;--brand:#5c62d6;--bg:#f5f7fb}
+*{box-sizing:border-box}body{margin:0;font-family:Inter,system-ui,-apple-system,Segoe UI,sans-serif;background:var(--bg);color:var(--ink)}
+header{background:#fff;border-bottom:1px solid var(--line);padding:18px max(22px,calc((100% - 1100px)/2));display:flex;align-items:center;justify-content:space-between;gap:12px}
+.logo{font-weight:800;font-size:20px;letter-spacing:-.5px}.logo span{color:var(--brand)}.today{font-size:13px;color:var(--muted)}
+main{max-width:1100px;margin:30px auto;padding:0 22px}.intro{display:flex;justify-content:space-between;align-items:end;gap:16px;flex-wrap:wrap;margin-bottom:22px}h1{font-size:30px;margin:0 0 7px;letter-spacing:-1px}.intro p{margin:0;color:var(--muted)}
+button{border:0;border-radius:10px;padding:11px 16px;font-weight:650;cursor:pointer;font-size:14px}.primary{background:var(--brand);color:white}.secondary{background:#eef0ff;color:var(--brand)}.danger{background:#fff0f0;color:#c04444;padding:7px 10px}
+.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:22px}.stat,.panel{background:white;border:1px solid var(--line);border-radius:16px;padding:19px}.stat label{color:var(--muted);font-size:13px}.stat strong{display:block;font-size:28px;margin-top:8px}
+.panel h2{font-size:17px;margin:0 0 15px}.toolbar{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:15px}.toolbar input,.toolbar select,.formgrid input,.formgrid select{border:1px solid var(--line);border-radius:9px;padding:11px;background:white;color:var(--ink);font:inherit;min-width:0}.toolbar input{flex:1;min-width:180px}
+.tablewrap{overflow-x:auto}table{border-collapse:collapse;width:100%;min-width:680px}th,td{text-align:left;padding:14px 12px;border-bottom:1px solid var(--line);font-size:14px}th{font-size:12px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted)}tbody tr:last-child td{border-bottom:0}.person{font-weight:700}.sub{display:block;color:var(--muted);font-size:12px;margin-top:4px}.pill{display:inline-block;border-radius:99px;padding:5px 9px;font-size:12px;font-weight:700}.Morning{background:#fff3d9;color:#956500}.Afternoon{background:#e6f2ff;color:#2367a7}.Night{background:#ece9ff;color:#594bb5}.Off{background:#edf0f4;color:#687487}
+.empty{text-align:center;color:var(--muted);padding:30px}.modal{position:fixed;inset:0;background:#11182780;display:none;align-items:center;justify-content:center;padding:18px}.modal.open{display:flex}.dialog{background:white;border-radius:18px;padding:24px;width:min(480px,100%);box-shadow:0 25px 70px #11182730}.dialoghead{display:flex;justify-content:space-between;align-items:center;margin-bottom:18px}.dialoghead h2{margin:0}.close{background:#f0f2f6;padding:7px 11px}.formgrid{display:grid;grid-template-columns:1fr 1fr;gap:13px}.field{display:flex;flex-direction:column;gap:6px}.field label{font-size:13px;color:var(--muted)}.field input,.field select{width:100%}.wide{grid-column:1/-1}.actions{display:flex;justify-content:flex-end;gap:8px;margin-top:20px}
+@media(max-width:620px){main{margin:22px auto}.stats{grid-template-columns:1fr}.stat{padding:15px}h1{font-size:25px}.formgrid{grid-template-columns:1fr}.wide{grid-column:auto}.today{display:none}}
+</style>
+</head>
+<body>
+<header><div class="logo">Work<span>Schedule</span></div><div class="today" id="today"></div></header>
+<main>
+<section class="intro"><div><h1>Team schedule</h1><p>Plan shifts and keep everyone on the same page.</p></div><button class="primary" id="addBtn">＋ Add shift</button></section>
+<section class="stats">
+<div class="stat"><label>Total shifts</label><strong id="total">0</strong></div>
+<div class="stat"><label>Team members</label><strong id="members">0</strong></div>
+<div class="stat"><label>Days off</label><strong id="daysOff">0</strong></div>
+</section>
+<section class="panel"><h2>Shift roster</h2>
+<div class="toolbar"><input id="search" placeholder="Search employee..." aria-label="Search employee"><input type="date" id="filterDate" aria-label="Filter by date"><select id="filterShift" aria-label="Filter by shift"><option value="">All shifts</option><option>Morning</option><option>Afternoon</option><option>Night</option><option>Off</option></select><button class="secondary" id="clearFilters">Clear</button></div>
+<div class="tablewrap"><table><thead><tr><th>Employee</th><th>Date</th><th>Shift</th><th>Hours</th><th>Notes</th><th>Action</th></tr></thead><tbody id="rows"></tbody></table><div id="empty" class="empty" hidden>No shifts found. Add a shift to get started.</div></div>
+</section>
+</main>
+<div class="modal" id="modal" role="dialog" aria-modal="true" aria-labelledby="formTitle"><div class="dialog"><div class="dialoghead"><h2 id="formTitle">Add a shift</h2><button class="close" id="closeBtn" aria-label="Close">✕</button></div>
+<form id="shiftForm"><div class="formgrid">
+<div class="field wide"><label for="employee">Employee name</label><input id="employee" required maxlength="70" placeholder="e.g. Alex Morgan"></div>
+<div class="field"><label for="date">Date</label><input id="date" type="date" required></div>
+<div class="field"><label for="shift">Shift</label><select id="shift"><option>Morning</option><option>Afternoon</option><option>Night</option><option>Off</option></select></div>
+<div class="field wide"><label for="notes">Notes (optional)</label><input id="notes" maxlength="150" placeholder="e.g. Front desk"></div>
+</div><div class="actions"><button type="button" class="secondary" id="cancelBtn">Cancel</button><button class="primary" type="submit">Save shift</button></div></form></div></div>
+<script>
+const $=id=>document.getElementById(id);
+const today=new Date();const localDate=d=>{const x=new Date(d.getTime()-d.getTimezoneOffset()*60000);return x.toISOString().slice(0,10)};
+$('today').textContent=today.toLocaleDateString(undefined,{weekday:'long',month:'short',day:'numeric',year:'numeric'});
+$('date').value=localDate(today);
+const initial=[
+{name:'Alex Morgan',date:localDate(today),shift:'Morning',notes:'Front desk'},
+{name:'Jamie Lee',date:localDate(today),shift:'Afternoon',notes:'Customer support'},
+{name:'Taylor Kim',date:localDate(today),shift:'Night',notes:'Closing shift'},
+{name:'Sam Rivera',date:localDate(new Date(today.getTime()+86400000)),shift:'Off',notes:'Weekly day off'}
+];
+let shifts;try{shifts=JSON.parse(localStorage.getItem('workschedule-shifts-v1'))||initial}catch{shifts=initial}
+function save(){localStorage.setItem('workschedule-shifts-v1',JSON.stringify(shifts));render()}
+function render(){
+ const q=$('search').value.trim().toLowerCase(),date=$('filterDate').value,shift=$('filterShift').value;
+ const filtered=shifts.map((s,i)=>({...s,index:i})).filter(s=>s.name.toLowerCase().includes(q)&&(!date||s.date===date)&&(!shift||s.shift===shift)).sort((a,b)=>a.date.localeCompare(b.date)||a.name.localeCompare(b.name));
+ $('rows').innerHTML=filtered.map(s=>'<tr><td><span class="person">'+esc(s.name)+'</span><span class="sub">Team member</span></td><td>'+esc(s.date)+'</td><td><span class="pill '+esc(s.shift)+'">'+esc(s.shift)+'</span></td><td>'+hours(s.shift)+'</td><td>'+esc(s.notes||'—')+'</td><td><button class="danger" data-delete="'+s.index+'">Delete</button></td></tr>').join('');
+ $('empty').hidden=filtered.length>0;$('total').textContent=shifts.length;$('members').textContent=new Set(shifts.map(s=>s.name.trim().toLowerCase())).size;$('daysOff').textContent=shifts.filter(s=>s.shift==='Off').length;
+}
+function esc(v){return String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
+function hours(s){return ({Morning:'8:00 AM – 4:00 PM',Afternoon:'12:00 PM – 8:00 PM',Night:'8:00 PM – 4:00 AM',Off:'—'})[s]||'—'}
+function openModal(){$('modal').classList.add('open');$('employee').focus()}
+function closeModal(){$('modal').classList.remove('open')}
+$('addBtn').onclick=openModal;$('closeBtn').onclick=closeModal;$('cancelBtn').onclick=closeModal;
+$('modal').addEventListener('click',e=>{if(e.target===$('modal'))closeModal()});
+document.addEventListener('keydown',e=>{if(e.key==='Escape')closeModal()});
+$('shiftForm').addEventListener('submit',e=>{e.preventDefault();shifts.push({name:$('employee').value.trim(),date:$('date').value,shift:$('shift').value,notes:$('notes').value.trim()});save();e.target.reset();$('date').value=localDate(today);closeModal()});
+$('rows').addEventListener('click',e=>{const b=e.target.closest('[data-delete]');if(b&&confirm('Delete this shift?')){shifts.splice(Number(b.dataset.delete),1);save()}});
+['search','filterDate','filterShift'].forEach(id=>$(id).addEventListener('input',render));
+$('clearFilters').onclick=()=>{$('search').value='';$('filterDate').value='';$('filterShift').value='';render()};
+render();
+</script>
+</body></html>
